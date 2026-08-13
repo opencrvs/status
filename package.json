@@ -6,21 +6,28 @@
     "dev": "next dev -p 3033",
     "build": "next build",
     "start": "next start -p 3033",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate": "tsx migrate.ts",
+    "migrate:down": "tsx migrate.ts down",
+    "vercel-build": "pnpm run migrate && next build"
   },
   "dependencies": {
+    "kysely": "^0.29.5",
     "next": "16.3.0",
+    "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.21.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   },
   "packageManager": "pnpm@11.17.0"
