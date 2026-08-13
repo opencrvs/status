@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
@@ -13,6 +12,8 @@ type MetricValue = number | string | boolean;
 type Metrics = Record<string, MetricValue>;
 
 type ValidatedBody = {
+  country_code: string;
+  domain: string;
   schema_version: string;
   reported_at: string;
   environment?: string;
@@ -61,16 +62,6 @@ async function readBodyWithLimit(
   );
 }
 
-async function resolveInstance(token: string) {
-  const hash = createHash("sha256").update(token).digest("hex");
-  return getDb()
-    .selectFrom("instances")
-    .select(["id", "country_code", "domain", "environment"])
-    .where("api_key_hash", "=", hash)
-    .where("disabled", "=", false)
-    .executeTakeFirst();
-}
-
 function isMetricValue(value: unknown): value is MetricValue {
   if (typeof value === "boolean" || typeof value === "string") return true;
   if (typeof value === "number") return Number.isFinite(value);
@@ -84,6 +75,14 @@ function validateBody(
     return { ok: false, error: "Request body must be a JSON object" };
   }
   const b = body as Record<string, unknown>;
+
+  if (typeof b.country_code !== "string" || b.country_code.length === 0) {
+    return { ok: false, error: "country_code is required" };
+  }
+
+  if (typeof b.domain !== "string" || b.domain.length === 0) {
+    return { ok: false, error: "domain is required" };
+  }
 
   if (typeof b.schema_version !== "string" || b.schema_version.length === 0) {
     return { ok: false, error: "schema_version is required" };
@@ -154,6 +153,8 @@ function validateBody(
   return {
     ok: true,
     value: {
+      country_code: b.country_code,
+      domain: b.domain,
       schema_version: b.schema_version,
       reported_at: b.reported_at,
       environment,
@@ -164,18 +165,6 @@ function validateBody(
 }
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization") ?? "";
-  const match = /^Bearer\s+(.+)$/.exec(authHeader);
-  const token = match?.[1]?.trim();
-  if (!token) {
-    return errorResponse(401, "Missing or invalid Authorization header");
-  }
-
-  const instance = await resolveInstance(token);
-  if (!instance) {
-    return errorResponse(401, "Invalid or disabled API key");
-  }
-
   const raw = await readBodyWithLimit(request);
   if (raw === null) {
     return errorResponse(413, "Request body exceeds 256 KB limit");
@@ -193,11 +182,15 @@ export async function POST(request: NextRequest) {
     return errorResponse(400, validated.error, validated.detail);
   }
 
-  const { schema_version, reported_at, environment, app_version, metrics } =
-    validated.value;
-  const countryCode = instance.country_code;
-  const domain = instance.domain;
-  const resolvedEnvironment = environment ?? instance.environment;
+  const {
+    country_code: countryCode,
+    domain,
+    schema_version,
+    reported_at,
+    environment,
+    app_version,
+    metrics,
+  } = validated.value;
   const reportedAt = new Date(reported_at);
 
   try {
@@ -208,7 +201,8 @@ export async function POST(request: NextRequest) {
         .values({
           country_code: countryCode,
           domain,
-          environment: resolvedEnvironment,
+          // Omit when not provided so the column's DB default ('production') applies.
+          ...(environment !== undefined ? { environment } : {}),
           app_version: app_version ?? null,
           schema_version,
           reported_at: reportedAt,
@@ -222,18 +216,14 @@ export async function POST(request: NextRequest) {
         .executeTakeFirst();
 
       if (!inserted) {
-        let existingQuery = trx
+        const existing = await trx
           .selectFrom("reports")
           .select("id")
           .where("country_code", "=", countryCode)
+          .where("domain", "=", domain)
           .where("reported_at", "=", reportedAt)
-          .where("schema_version", "=", schema_version);
-        existingQuery =
-          domain === null
-            ? existingQuery.where("domain", "is", null)
-            : existingQuery.where("domain", "=", domain);
-
-        const existing = await existingQuery.executeTakeFirstOrThrow();
+          .where("schema_version", "=", schema_version)
+          .executeTakeFirstOrThrow();
         return { reportId: existing.id, duplicate: true as const };
       }
 
