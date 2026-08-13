@@ -14,6 +14,7 @@ type Metrics = Record<string, MetricValue>;
 type ValidatedBody = {
   country_code: string;
   domain: string;
+  application_name?: string;
   schema_version: string;
   reported_at: string;
   environment?: string;
@@ -33,9 +34,7 @@ function errorResponse(
 
 // Reads the body ourselves (rather than request.json()) so an oversized
 // payload is rejected before it's fully buffered in memory.
-async function readBodyWithLimit(
-  request: NextRequest
-): Promise<string | null> {
+async function readBodyWithLimit(request: NextRequest): Promise<string | null> {
   const contentLength = request.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
     return null;
@@ -70,7 +69,9 @@ function isMetricValue(value: unknown): value is MetricValue {
 
 function validateBody(
   body: unknown
-): { ok: true; value: ValidatedBody } | { ok: false; error: string; detail?: string } {
+):
+  | { ok: true; value: ValidatedBody }
+  | { ok: false; error: string; detail?: string } {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, error: "Request body must be a JSON object" };
   }
@@ -82,6 +83,14 @@ function validateBody(
 
   if (typeof b.domain !== "string" || b.domain.length === 0) {
     return { ok: false, error: "domain is required" };
+  }
+
+  let applicationName: string | undefined;
+  if (b.application_name !== undefined) {
+    if (typeof b.application_name !== "string") {
+      return { ok: false, error: "application_name must be a string" };
+    }
+    applicationName = b.application_name;
   }
 
   if (typeof b.schema_version !== "string" || b.schema_version.length === 0) {
@@ -127,7 +136,11 @@ function validateBody(
     }
   }
 
-  if (typeof b.metrics !== "object" || b.metrics === null || Array.isArray(b.metrics)) {
+  if (
+    typeof b.metrics !== "object" ||
+    b.metrics === null ||
+    Array.isArray(b.metrics)
+  ) {
     return { ok: false, error: "metrics is required" };
   }
   const entries = Object.entries(b.metrics as Record<string, unknown>);
@@ -155,6 +168,7 @@ function validateBody(
     value: {
       country_code: b.country_code,
       domain: b.domain,
+      application_name: applicationName,
       schema_version: b.schema_version,
       reported_at: b.reported_at,
       environment,
@@ -185,6 +199,7 @@ export async function POST(request: NextRequest) {
   const {
     country_code: countryCode,
     domain,
+    application_name,
     schema_version,
     reported_at,
     environment,
@@ -201,7 +216,8 @@ export async function POST(request: NextRequest) {
         .values({
           country_code: countryCode,
           domain,
-          // Omit when not provided so the column's DB default ('production') applies.
+          application_name: application_name ?? null,
+          // Omit when not provided so the column's DB default ('unknown') applies.
           ...(environment !== undefined ? { environment } : {}),
           app_version: app_version ?? null,
           schema_version,
@@ -209,7 +225,12 @@ export async function POST(request: NextRequest) {
         })
         .onConflict((oc) =>
           oc
-            .columns(["country_code", "domain", "reported_at", "schema_version"])
+            .columns([
+              "country_code",
+              "domain",
+              "reported_at",
+              "schema_version",
+            ])
             .doNothing()
         )
         .returning("id")
@@ -247,7 +268,11 @@ export async function POST(request: NextRequest) {
 
     if (result.duplicate) {
       return NextResponse.json(
-        { report_id: result.reportId, status: "duplicate", metrics_recorded: 0 },
+        {
+          report_id: result.reportId,
+          status: "duplicate",
+          metrics_recorded: 0,
+        },
         { status: 200 }
       );
     }
