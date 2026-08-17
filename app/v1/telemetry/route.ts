@@ -15,6 +15,7 @@ type ValidatedBody = {
   country_code: string;
   domain: string;
   application_name?: string;
+  organisation_name?: string;
   schema_version: string;
   reported_at: string;
   environment?: string;
@@ -85,14 +86,6 @@ function validateBody(
     return { ok: false, error: "domain is required" };
   }
 
-  let applicationName: string | undefined;
-  if (b.application_name !== undefined) {
-    if (typeof b.application_name !== "string") {
-      return { ok: false, error: "application_name must be a string" };
-    }
-    applicationName = b.application_name;
-  }
-
   if (typeof b.schema_version !== "string" || b.schema_version.length === 0) {
     return { ok: false, error: "schema_version is required" };
   }
@@ -113,6 +106,8 @@ function validateBody(
 
   let environment: string | undefined;
   let appVersion: string | undefined;
+  let applicationName: string | undefined;
+  let organisationName: string | undefined;
   if (b.instance !== undefined) {
     if (
       typeof b.instance !== "object" ||
@@ -133,6 +128,24 @@ function validateBody(
         return { ok: false, error: "instance.app_version must be a string" };
       }
       appVersion = instance.app_version;
+    }
+    if (instance.application_name !== undefined) {
+      if (typeof instance.application_name !== "string") {
+        return {
+          ok: false,
+          error: "instance.application_name must be a string",
+        };
+      }
+      applicationName = instance.application_name;
+    }
+    if (instance.organisation_name !== undefined) {
+      if (typeof instance.organisation_name !== "string") {
+        return {
+          ok: false,
+          error: "instance.organisation_name must be a string",
+        };
+      }
+      organisationName = instance.organisation_name;
     }
   }
 
@@ -169,6 +182,7 @@ function validateBody(
       country_code: b.country_code,
       domain: b.domain,
       application_name: applicationName,
+      organisation_name: organisationName,
       schema_version: b.schema_version,
       reported_at: b.reported_at,
       environment,
@@ -200,6 +214,7 @@ export async function POST(request: NextRequest) {
     country_code: countryCode,
     domain,
     application_name,
+    organisation_name,
     schema_version,
     reported_at,
     environment,
@@ -217,6 +232,7 @@ export async function POST(request: NextRequest) {
           country_code: countryCode,
           domain,
           application_name: application_name ?? null,
+          organisation_name: organisation_name ?? null,
           // Omit when not provided so the column's DB default ('unknown') applies.
           ...(environment !== undefined ? { environment } : {}),
           app_version: app_version ?? null,

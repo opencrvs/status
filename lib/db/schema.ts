@@ -20,6 +20,7 @@ export interface Database {
     environment: Generated<string>;
     app_version: string | null;
     application_name: string | null;
+    organisation_name: string | null;
     schema_version: string;
     reported_at: Timestamp;
     received_at: Generated<Timestamp>;
