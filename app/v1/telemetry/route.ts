@@ -138,14 +138,14 @@ function validateBody(
       }
       applicationName = instance.application_name;
     }
-    if (instance.organisation_name !== undefined) {
-      if (typeof instance.organisation_name !== "string") {
+    if (instance.organisation !== undefined) {
+      if (typeof instance.organisation !== "string") {
         return {
           ok: false,
-          error: "instance.organisation_name must be a string",
+          error: "instance.organisation must be a string",
         };
       }
-      organisationName = instance.organisation_name;
+      organisationName = instance.organisation;
     }
   }
 
