@@ -1,5 +1,38 @@
 import type { Environment } from "@/lib/environments";
 
+export function EnvironmentListItem({ env }: { env: Environment }) {
+  const isUp = env.status === "operational";
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 px-5 py-3">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          isUp ? "bg-[#1C8A6E]" : "bg-[#D14A3A]"
+        }`}
+        aria-hidden
+      />
+      <span className="font-medium text-[#373050]">{env.name}</span>
+      <span className="truncate text-sm text-[#373050]/50">{env.domain}</span>
+      {env.version && (
+        <span className="rounded bg-[#F5F4FA] px-1.5 py-0.5 font-mono text-xs text-[#373050]/60">
+          v{env.version}
+        </span>
+      )}
+      {!isUp && env.error && (
+        <span className="text-xs text-[#D14A3A]">{env.error}</span>
+      )}
+      <a
+        href={env.registerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="ml-auto text-sm font-medium text-[#0058E0] hover:underline"
+      >
+        Open app
+      </a>
+    </li>
+  );
+}
+
 export function EnvironmentCard({ env }: { env: Environment }) {
   const isUp = env.status === "operational";
 

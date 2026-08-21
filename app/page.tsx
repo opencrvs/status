@@ -1,4 +1,4 @@
-import { EnvironmentCard } from "@/components/environment-card";
+import { EnvironmentCard, EnvironmentListItem } from "@/components/environment-card";
 import { OpenCrvsLogo } from "@/components/opencrvs-logo";
 import { getEnvironments, groupEnvironments } from "@/lib/environments";
 
@@ -52,11 +52,19 @@ export default async function Home() {
         {groups.map(({ group, label, environments }) => (
           <section key={group} className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-[#373050]">{label}</h2>
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {environments.map((env) => (
-                <EnvironmentCard key={env.domain} env={env} />
-              ))}
-            </div>
+            {group === "e2e" ? (
+              <ul className="flex flex-col divide-y divide-black/5 rounded-2xl border border-black/5 bg-white">
+                {environments.map((env) => (
+                  <EnvironmentListItem key={env.domain} env={env} />
+                ))}
+              </ul>
+            ) : (
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {environments.map((env) => (
+                  <EnvironmentCard key={env.domain} env={env} />
+                ))}
+              </div>
+            )}
           </section>
         ))}
       </main>
