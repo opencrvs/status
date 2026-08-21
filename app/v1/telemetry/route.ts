@@ -108,6 +108,12 @@ function validateBody(
   let appVersion: string | undefined;
   let applicationName: string | undefined;
   let organisationName: string | undefined;
+  if (b.organisation !== undefined) {
+    if (typeof b.organisation !== "string") {
+      return { ok: false, error: "organisation must be a string" };
+    }
+    organisationName = b.organisation;
+  }
   if (b.instance !== undefined) {
     if (
       typeof b.instance !== "object" ||
