@@ -96,6 +96,10 @@ function toGroup(environment: string): EnvironmentGroup {
   return "other";
 }
 
+// e2e environments are ephemeral (spun up per PR/branch and torn down), so a
+// stale one that stopped reporting shouldn't stick around on the page.
+const E2E_STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
+
 // The domains we list are whichever ones have reported in under
 // LISTED_ORGANISATION_NAME, not a static deploy list — pulling one row per
 // domain (its most recent report) tells us which group each belongs to.
@@ -105,30 +109,49 @@ async function getListedDomains(): Promise<
   const rows = await getDb()
     .selectFrom("reports")
     .distinctOn("domain")
-    .select(["domain", "environment"])
+    .select(["domain", "environment", "reported_at"])
     .where("organisation_name", "=", LISTED_ORGANISATION_NAME)
     .where("domain", "is not", null)
     .orderBy("domain")
     .orderBy("reported_at", "desc")
     .execute();
 
+  const staleCutoff = Date.now() - E2E_STALE_AFTER_MS;
+
   return rows
-    .filter((row): row is { domain: string; environment: string } =>
-      Boolean(row.domain)
+    .filter(
+      (row): row is { domain: string; environment: string; reported_at: Date } =>
+        Boolean(row.domain)
     )
-    .map((row) => ({ domain: row.domain, group: toGroup(row.environment) }));
+    .map((row) => ({
+      domain: row.domain,
+      group: toGroup(row.environment),
+      reportedAt: new Date(row.reported_at).getTime(),
+    }))
+    .filter(({ group, reportedAt }) => group !== "e2e" || reportedAt >= staleCutoff)
+    .map(({ domain, group }) => ({ domain, group }));
 }
 
 async function getPingStatus(
   domain: string,
   group: EnvironmentGroup
-): Promise<{ status: EnvironmentStatus; version?: string; error?: string }> {
+): Promise<{
+  status: EnvironmentStatus;
+  version?: string;
+  error?: string;
+  httpStatus?: number;
+}> {
   try {
     const res = await fetch(`https://gateway.${domain}/ping`, fetchInit(group));
     const version = res.headers.get("x-version") ?? undefined;
 
     if (!res.ok) {
-      return { status: "down", version, error: `HTTP ${res.status}` };
+      return {
+        status: "down",
+        version,
+        error: `HTTP ${res.status}`,
+        httpStatus: res.status,
+      };
     }
 
     const body = await res.json().catch(() => null);
@@ -183,11 +206,17 @@ async function getApplicationConfig(
 async function getEnvironment(
   domain: string,
   group: EnvironmentGroup
-): Promise<Environment> {
+): Promise<Environment | null> {
   const [ping, config] = await Promise.all([
     getPingStatus(domain, group),
     getApplicationConfig(domain, group),
   ]);
+
+  // A 404 from an e2e gateway means the review app has already been torn
+  // down, not that it's down — drop it instead of showing it as broken.
+  if (group === "e2e" && ping.httpStatus === 404) {
+    return null;
+  }
 
   return {
     domain,
@@ -203,7 +232,10 @@ async function getEnvironment(
 
 export async function getEnvironments(): Promise<Environment[]> {
   const domains = await getListedDomains();
-  return Promise.all(domains.map(({ domain, group }) => getEnvironment(domain, group)));
+  const environments = await Promise.all(
+    domains.map(({ domain, group }) => getEnvironment(domain, group))
+  );
+  return environments.filter((env): env is Environment => env !== null);
 }
 
 export function groupEnvironments(
