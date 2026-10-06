@@ -112,6 +112,8 @@ async function getListedDomains(): Promise<
     .select(["domain", "environment", "reported_at"])
     .where("organisation_name", "=", LISTED_ORGANISATION_NAME)
     .where("domain", "is not", null)
+    // Local dev stacks report in too, but they aren't reachable from here.
+    .where("domain", "not like", "%opencrvs.localhost")
     .orderBy("domain")
     .orderBy("reported_at", "desc")
     .execute();
